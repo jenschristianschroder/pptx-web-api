@@ -176,3 +176,5 @@ cython_debug/
 # project specific ignores
 test
 output
+deploy
+*.zip

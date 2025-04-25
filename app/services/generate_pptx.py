@@ -77,7 +77,7 @@ def set_table_font_size(table, font_size):
         for paragraph in cell.text_frame.paragraphs:
             for run in paragraph.runs:
                 run.font.size = Pt(font_size)
-                
+
 def create_table(slide, rows, cols, left, top, width, height, font_size, font_bold):
     new_shape = slide.shapes.add_table(rows, cols, left, top, width, height)
     new_table = new_shape.table
@@ -174,3 +174,41 @@ def generate_ppt(jobid: str, records: list, template_path='templates/template.pp
         os.makedirs(OUTPUT_PATH)
 
     prs.save(os.path.join(OUTPUT_PATH, output_filename))
+    print(f"Presentation saved as {output_filename}")
+    # Post the saved presentation back to Dataverse
+    file_path = os.path.join(OUTPUT_PATH, output_filename)
+    token = get_access_token()
+
+    # Step 1: Create the record with the relationship to the job
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+    }
+    data = {
+        'jeschro_name': output_filename,
+        'jeschro_Job@odata.bind': f"/jeschro_jobs({jobid})"
+    }
+    url = f"{DATAVERSE_API_URL.rstrip('/')}/jeschro_files"
+    create_response = requests.post(url, headers=headers, data=json.dumps(data))
+    create_response.raise_for_status()
+
+    # Extract the ID of the created record
+    created_record_id = create_response.json().get('jeschro_fileid')
+    if not created_record_id:
+        raise Exception("Failed to retrieve the ID of the created record.")
+
+    # Step 2: Upload the file to the created record
+    upload_url = f"{url}({created_record_id})/jeschro_file"
+    print(f"Uploading file {output_filename} to {upload_url}")
+    with open(file_path, 'rb') as file_data:
+        upload_headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/octet-stream',
+            'x-ms-file-name': output_filename
+        }
+        upload_response = requests.patch(upload_url, headers=upload_headers, data=file_data)
+        upload_response.raise_for_status()
+
+    os.remove(os.path.join(OUTPUT_PATH, output_filename))
+    print(f"File {output_filename} successfully uploaded to Dataverse record {created_record_id}.")
